@@ -27,10 +27,16 @@ def get_credentials() -> dict:
     "universe_domain": os.getenv("UNIVERSE_DOMAIN")
   }
 
-def get_all_rows(doc_name: str, sheet_name: str = None) -> List[dict]:
+def get_all_records(doc_name: str, sheet_name: str = None) -> List[dict]:
   """
   Fetches all rows from a given Google Sheet worksheet.
   """
   sh = settings.GSPREAD_CLIENT.open(doc_name)
   worksheet = sh.worksheet[sheet_name] if sheet_name else sh.get_worksheet(0)
   return worksheet.get_all_records()
+
+def good_or_bad(doc_name: str, sheet_name: str = None):
+  sh = settings.GSPREAD_CLIENT.open(doc_name)
+  worksheet = sh.worksheet[sheet_name] if sheet_name else sh.get_worksheet(0)
+  score = worksheet.col_values(4)
+  worksheet.update_acell('E2', 'Bingo!')

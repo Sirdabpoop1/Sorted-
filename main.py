@@ -1,4 +1,3 @@
-'''
 import gspread
 import django
 from google.oauth2.service_account import Credentials
@@ -23,4 +22,3 @@ sheet = client.open_by_key(sheets_id)
 values_list = sheet.sheet1.row_values(2)
 
 print(values_list)
-'''
