@@ -1,6 +1,12 @@
 import gspread
 from google.oauth2.service_account import Credentials
 
+#ids
+
+
+
+
+#General Variables
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
 client = gspread.authorize(creds)
@@ -17,7 +23,7 @@ for i, row in enumerate(form, start = 1):
         grade = int(grade) 
     
         if grade > 7 and grade < 10:
-                points += 1
+            points += 1
         elif grade >= 10:
             points += 3
         
@@ -28,7 +34,7 @@ for i, row in enumerate(form, start = 1):
             if conferences_total >= 3:
                 points += conferences_total * 2
         
-        for awards in row(i + 1):
+        for awards in raw_worksheet.row_values(i + 1):
             if awards == "Best Delegate":
                 points += 4
             elif awards == "Outstanding Delegate":
@@ -37,6 +43,8 @@ for i, row in enumerate(form, start = 1):
                 points += 2
             elif awards == "Best Position Paper":
                 points += 1
+
+        
                 
 
         print(grade)
