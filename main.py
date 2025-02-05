@@ -49,12 +49,12 @@ for i, row in enumerate(form, start = 1):
                 points += 2
             elif awards == "Best Position Paper":
                 points += 1        
-        con_points = disec_worksheet.col_values(3)
-        del con_points[0]
+        country_points = disec_worksheet.col_values(3)
+        del country_points[0]
 
-        print(con_points)
+        print(country_points)
 
-        ideal_con_points = con_points[min(range(len(con_points)), key = lambda i: abs(int(con_points[i]) - points))]
+        ideal_con_points = country_points[min(range(len(country_points)), key = lambda i: abs(int(country_points[i]) - points))]
 
 
         cell = disec_worksheet.find(ideal_con_points)
