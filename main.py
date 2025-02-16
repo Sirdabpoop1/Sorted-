@@ -20,7 +20,10 @@ disec = disec_worksheet.get_all_values()
 difference = 19
 
 
+
 for i, row in enumerate(form, start = 1):
+    
+    foundIt = False
     points = 0
     grade = raw_worksheet.cell(i + 1, 2).value
     name = raw_worksheet.cell(i + 1, 1).value
@@ -48,16 +51,33 @@ for i, row in enumerate(form, start = 1):
             elif awards == "Honorable Mention":
                 points += 2
             elif awards == "Best Position Paper":
-                points += 1        
+                points += 1
+
+
         country_points = disec_worksheet.col_values(3)
         del country_points[0]
+        taken_list = disec_worksheet.col_values(4)    
+        del taken_list[0]
+        
 
         print(country_points)
+        print(taken_list)
+        
+        x = 0
 
-        ideal_con_points = country_points[min(range(len(country_points)), key = lambda i: abs(int(country_points[i]) - points))]
+        for x, coun_points in enumerate(country_points):
+            if (taken_list[x] == "Taken"):
+                del(country_points[x])
+
+        
+        print(country_points)
+        print(taken_list)
+
+        ideal_coun_points = country_points[min(range(len(country_points)), key = lambda i: abs(int(country_points[i]) - points))]
 
 
-        cell = disec_worksheet.find(ideal_con_points)
+
+        cell = disec_worksheet.find(ideal_coun_points)
         ideal_pos_row = cell.row
         disec_worksheet.update_cell(ideal_pos_row, 2, name)
         disec_worksheet.update_cell(ideal_pos_row, 4, "Taken")
