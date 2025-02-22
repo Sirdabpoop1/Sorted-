@@ -10,8 +10,8 @@ sh = client.open_by_key(sheet_id)
 raw_worksheet = sh.worksheet("Raw")
 hcc_worksheet = sh.worksheet("HCC")
 disec_worksheet = sh.worksheet("DISEC")
+final_worksheet = sh.worksheet("Final")
 form = raw_worksheet.get_all_values()
-disec = disec_worksheet.get_all_values()
 difference = 19
 
 #Points
@@ -22,7 +22,6 @@ del hcc_points[0]
 for z in range(len(hcc_points)):
     value = hcc_points[z]
     hcc_points[z] = int(value) * 2
-    print(hcc_points[z])
 country_points = disec_points + hcc_points
 
 for i, row in enumerate(form, start = 1):
@@ -76,12 +75,21 @@ for i, row in enumerate(form, start = 1):
 
         if ideal_coun_points in disec_points:
             disec_ideal_coun_points  = ideal_coun_points
-            cell = disec_worksheet.find(disec_ideal_coun_points)
+            cell = disec_worksheet.find(str(disec_ideal_coun_points))
+            disec_ideal_pos_row = cell.row
+            disec_worksheet.update_cell(disec_ideal_pos_row, 2, name)
+            disec_worksheet.update_cell(disec_ideal_pos_row, 4, "Taken")
+            delegation = disec_worksheet.find(str(disec_ideal_pos_row), 1).value
         else:
             hcc_ideal_coun_points = ideal_coun_points
-            cell = hcc_worksheet.find(hcc_ideal_coun_points)
-
-        ideal_pos_row = cell.row
-        disec_worksheet.update_cell(ideal_pos_row, 2, name)
-        disec_worksheet.update_cell(ideal_pos_row, 4, "Taken")
+            hcc_ideal_coun_points = int(hcc_ideal_coun_points / 2)
+            cell = hcc_worksheet.find(str(hcc_ideal_coun_points))
+            hcc_ideal_pos_row = cell.row
+            hcc_worksheet.update_cell(hcc_ideal_pos_row, 2, name)
+            hcc_worksheet.update_cell(hcc_ideal_pos_row, 4, "Taken")
+            print(hcc_ideal_pos_row)
+            delegation = hcc_worksheet.find(str(hcc_ideal_pos_row), 1).value
+        
+        final_worksheet.update_cell(i + 1, 1, name)
+        final_worksheet.update_cell(i + 1, 2, delegation)
         raw_worksheet.update_cell(i + 1, 10, points)
