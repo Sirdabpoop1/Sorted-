@@ -1,11 +1,6 @@
 import gspread
 from google.oauth2.service_account import Credentials
 
-#ids
-
-
-
-
 #General Variables
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
@@ -19,7 +14,16 @@ form = raw_worksheet.get_all_values()
 disec = disec_worksheet.get_all_values()
 difference = 19
 
-
+#Points
+disec_points = disec_worksheet.col_values(3)
+del disec_points[0]
+hcc_points = hcc_worksheet.col_values(3)
+del hcc_points[0]
+for z in range(len(hcc_points)):
+    value = hcc_points[z]
+    hcc_points[z] = int(value) * 2
+    print(hcc_points[z])
+country_points = disec_points + hcc_points
 
 for i, row in enumerate(form, start = 1):
     
@@ -54,30 +58,29 @@ for i, row in enumerate(form, start = 1):
                 points += 1
 
 
-        country_points = disec_worksheet.col_values(3)
-        del country_points[0]
-        taken_list = disec_worksheet.col_values(4)    
-        del taken_list[0]
-        
 
-        print(country_points)
-        print(taken_list)
+        disec_taken = disec_worksheet.col_values(4)
+        del disec_taken[0]
+        hcc_taken = hcc_worksheet.col_values(4)
+        del hcc_taken[0]
+        taken_list = disec_taken + hcc_taken
+        
         
         x = 0
 
         for x, coun_points in enumerate(country_points):
             if (taken_list[x] == "Taken"):
-                del(country_points[x])
-
-        
-        print(country_points)
-        print(taken_list)
+                country_points[x] = 10000
 
         ideal_coun_points = country_points[min(range(len(country_points)), key = lambda i: abs(int(country_points[i]) - points))]
 
+        if ideal_coun_points in disec_points:
+            disec_ideal_coun_points  = ideal_coun_points
+            cell = disec_worksheet.find(disec_ideal_coun_points)
+        else:
+            hcc_ideal_coun_points = ideal_coun_points
+            cell = hcc_worksheet.find(hcc_ideal_coun_points)
 
-
-        cell = disec_worksheet.find(ideal_coun_points)
         ideal_pos_row = cell.row
         disec_worksheet.update_cell(ideal_pos_row, 2, name)
         disec_worksheet.update_cell(ideal_pos_row, 4, "Taken")
