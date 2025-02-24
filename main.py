@@ -12,7 +12,6 @@ hcc_worksheet = sh.worksheet("HCC")
 disec_worksheet = sh.worksheet("DISEC")
 final_worksheet = sh.worksheet("Final")
 form = raw_worksheet.get_all_values()
-difference = 19
 
 #Points
 disec_points = disec_worksheet.col_values(3)
@@ -30,8 +29,8 @@ for i, row in enumerate(form, start = 1):
     points = 0
     grade = raw_worksheet.cell(i + 1, 2).value
     name = raw_worksheet.cell(i + 1, 1).value
-
-    if grade: 
+    done = final_worksheet.find(name)
+    if not done:
         grade = int(grade) 
     
         if grade > 7 and grade < 10:
@@ -74,12 +73,12 @@ for i, row in enumerate(form, start = 1):
         ideal_coun_points = country_points[min(range(len(country_points)), key = lambda i: abs(int(country_points[i]) - points))]
 
         if ideal_coun_points in disec_points:
-            disec_ideal_coun_points  = ideal_coun_points
+            disec_ideal_coun_points = ideal_coun_points
             cell = disec_worksheet.find(str(disec_ideal_coun_points))
             disec_ideal_pos_row = cell.row
             disec_worksheet.update_cell(disec_ideal_pos_row, 2, name)
             disec_worksheet.update_cell(disec_ideal_pos_row, 4, "Taken")
-            delegation = disec_worksheet.find(str(disec_ideal_pos_row), 1).value
+            delegation = disec_worksheet.cell(disec_ideal_pos_row, 1).value
         else:
             hcc_ideal_coun_points = ideal_coun_points
             hcc_ideal_coun_points = int(hcc_ideal_coun_points / 2)
@@ -87,9 +86,8 @@ for i, row in enumerate(form, start = 1):
             hcc_ideal_pos_row = cell.row
             hcc_worksheet.update_cell(hcc_ideal_pos_row, 2, name)
             hcc_worksheet.update_cell(hcc_ideal_pos_row, 4, "Taken")
-            print(hcc_ideal_pos_row)
-            delegation = hcc_worksheet.find(str(hcc_ideal_pos_row), 1).value
+            delegation = hcc_worksheet.cell(hcc_ideal_pos_row, 1).value
         
         final_worksheet.update_cell(i + 1, 1, name)
         final_worksheet.update_cell(i + 1, 2, delegation)
-        raw_worksheet.update_cell(i + 1, 10, points)
+        raw_worksheet.update_cell(i + 1, 13, points)
