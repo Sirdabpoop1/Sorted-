@@ -24,14 +24,13 @@ for z in range(len(hcc_points)):
 country_points = disec_points + hcc_points
 
 for i, row in enumerate(form, start = 1):
-    
-    foundIt = False
     points = 0
     grade = raw_worksheet.cell(i + 1, 2).value
-    name = raw_worksheet.cell(i + 1, 1).value
-    done = final_worksheet.find(name)
-    if not done:
-        grade = int(grade) 
+    if grade:
+        name = raw_worksheet.cell(i + 1, 1).value
+        done = final_worksheet.find(name)
+    if grade and not done:
+        grade = int(grade)
     
         if grade > 7 and grade < 10:
             points += 1
@@ -70,7 +69,43 @@ for i, row in enumerate(form, start = 1):
             if (taken_list[x] == "Taken"):
                 country_points[x] = 10000
 
-        ideal_coun_points = country_points[min(range(len(country_points)), key = lambda i: abs(int(country_points[i]) - points))]
+        com_preference = []
+        com_preference.append(raw_worksheet.cell(i + 1, 10).value)
+        com_preference.append(raw_worksheet.cell(i + 1, 12).value)
+        del_preference = []
+        del_preference.append(raw_worksheet.cell(i + 1, 11).value)
+        del_preference.append(raw_worksheet.cell(i + 1, 13).value)
+
+        a = 0
+        ideal_coun_points = 0
+        prefered = False
+
+        for choice in com_preference:
+            if prefered == True:
+                print("hello!")
+                break
+            elif choice == "HCC":
+                hcc_prefered_point = hcc_worksheet.cell(hcc_worksheet.find(del_preference[a]).row, 3).value
+                prefered_del_points = int(hcc_prefered_point) * 2
+                print("HCC true!")
+                print(abs(int(prefered_del_points) - points))
+                if abs(int(prefered_del_points) - points) <= 3:
+                    ideal_coun_points = prefered_del_points
+                    prefered = True
+                    print("prefered HCC!")
+            elif choice == "DISEC":
+                prefered_del_points = disec_worksheet.cell(disec_worksheet.find(del_preference[a]).row, 3).value
+                print("disec true!")
+                if abs(int(prefered_del_points) - points) <= 3:
+                    ideal_coun_points = prefered_del_points
+                    prefered = True
+                    print("Prefered Disec!")
+            else:
+                print("hi")
+            a += 1
+        
+        if ideal_coun_points == 0:
+            ideal_coun_points = country_points[min(range(len(country_points)), key = lambda i: abs(int(country_points[i]) - points))]
 
         if ideal_coun_points in disec_points:
             disec_ideal_coun_points = ideal_coun_points
@@ -90,4 +125,4 @@ for i, row in enumerate(form, start = 1):
         
         final_worksheet.update_cell(i + 1, 1, name)
         final_worksheet.update_cell(i + 1, 2, delegation)
-        raw_worksheet.update_cell(i + 1, 13, points)
+        raw_worksheet.update_cell(i + 1, 14, points)
