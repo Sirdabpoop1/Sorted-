@@ -175,7 +175,7 @@ for i, row in enumerate(form, start = 1):
                     ideal_coun_points = prefered_del_points.value
                     prefered = True
             elif choice == "ACC":
-                prefered_cell = safe_read(acc_worksheet.find, del_preference[a]).value
+                prefered_cell = safe_read(acc_worksheet.find, del_preference[a])
                 acc_prefered_point = safe_read(acc_worksheet.cell, prefered_cell.row, 2)
                 prefered_del_points = int(acc_prefered_point.value) * 3
                 if abs(int(prefered_del_points) - points) <= 0.5:
@@ -189,7 +189,6 @@ for i, row in enumerate(form, start = 1):
         y = 0
         #Prints to the Google Sheet that the recently assigned position is now taken.
         if ideal_coun_points in disec_points:
-            # cell = safe_read(disec_worksheet.find, str(ideal_coun_points))
             for val in disec_points:
                 if str(ideal_coun_points) == str(val):
                     good_row = y + 2
@@ -199,7 +198,6 @@ for i, row in enumerate(form, start = 1):
             delegation = safe_read(disec_worksheet.cell, good_row, 1)
             delegation = delegation.value
         elif ideal_coun_points in las_points:
-            # cell = safe_read(las_worksheet.find, str(int(ideal_coun_points/2)))
             for val in las_points:
                 if str(ideal_coun_points) == str(val):
                     good_row = y + 2
@@ -209,7 +207,6 @@ for i, row in enumerate(form, start = 1):
             delegation = safe_read(las_worksheet.cell, good_row, 1)
             delegation = delegation.value
         elif ideal_coun_points in acc_points:
-            # cell = safe_read(acc_worksheet.find, str(int(ideal_coun_points/3)))
             for val in acc_points:
                 if str(ideal_coun_points) == str(val):
                     good_row = y + 2
