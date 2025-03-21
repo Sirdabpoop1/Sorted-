@@ -18,18 +18,19 @@ final_worksheet = sh.worksheet("Final")
 form = raw_worksheet.get_all_values()
 
 #Sets a list per committee with point values. Each row has a preset point value, which correlates to a country.
-disec_points = disec_worksheet.col_values(3)
+disec_points = disec_worksheet.col_values(2)
 del disec_points[0]
-las_points = las_worksheet.col_values(3)
+las_points = las_worksheet.col_values(2)
 del las_points[0]
 for z in range(len(las_points)):
     value = las_points[z]
     las_points[z] = int(value) * 2
-acc_points = acc_worksheet.col_values(3)
+acc_points = acc_worksheet.col_values(2)
 del acc_points[0]
-for z in range(len(las_points)):
-    value = las_points[z]
-    acc_points[z] = int(value) * 3
+for p in range(len(acc_points)):
+    value = acc_points[p]
+    acc_points[p] = int(value) * 3
+
 country_points = disec_points + las_points + acc_points
 
 #Ensures that, when the quota for updates is met, the program will pause until the quota is reset, before continuing to run.
@@ -39,7 +40,6 @@ def safe_update(func, *args, **kwargs):
     retries = 0
     while retries < max_retries:
         try:
-            print(f"Attempting to update the sheet. Retry {retries + 1}/{max_retries}")
             return func(*args, **kwargs)
         except gspread.exceptions.APIError as e:
             print(f"APIError: {e}")
@@ -61,7 +61,6 @@ def safe_read(func, *args, **kwargs):
     retries = 0
     while retries < max_retries:
         try:
-            print(f"Attempting to read the sheet. Retry {retries + 1}/{max_retries}")
             return func(*args, **kwargs)
         except gspread.exceptions.APIError as e:
             print(f"APIError: {e}")
@@ -92,10 +91,16 @@ for i, row in enumerate(form, start = 1):
         grade = int(grade)
     
         #Adding points based on grade
-        if grade > 7 and grade < 10:
-            points += 1
-        elif grade >= 10:
-            points += 3
+        if grade == 8:
+            points += 0.4
+        elif grade == 9:
+            points += 0.8
+        elif grade == 10:
+            points += 1.2
+        elif grade == 11:
+            points += 1.6
+        elif grade == 12:
+            points += 2
         
         #Adding points based on conferences attended
         conferences_attended = safe_read(raw_worksheet.cell, i + 1, 5).value
@@ -103,18 +108,18 @@ for i, row in enumerate(form, start = 1):
         if conferences_attended: 
             conferences_total = int(conferences_attended)
             if conferences_total >= 3:
-                points += conferences_total * 0.25
+                points += conferences_total * 0.75
         
         #Adding points based on awards
         for awards in safe_read(raw_worksheet.row_values, i + 1):
             if awards == "Best Delegate":
-                points += 1
+                points += 2.3
             elif awards == "Outstanding Delegate":
-                points += 0.75
+                points += 1.8
             elif awards == "Honorable Mention":
-                points += 0.5
+                points += 1.2
             elif awards == "Best Position Paper":
-                points += 0.25
+                points += 0.6
 
 
         #Creating a "Taken" list for each committee. Each item is either a space or the word "Taken"
@@ -128,68 +133,98 @@ for i, row in enumerate(form, start = 1):
         
         #Compares the "Taken" list to the list of country points. Sets every country_point item that shares the same index as a "Taken" item to an
         #absurd number that will never be the closest. As a result, it essentially removes that country as a possible option for a delegate to take.
+
         x = 0
-        for x, coun_points in enumerate(country_points):
-            if (taken_list[x] == "Taken"):
-                country_points[x] = 100000000
+        for x, point in enumerate(disec_points):
+            if disec_taken[x] == "Taken":
+                disec_points[x] = 100000000
+        for x, point in enumerate(las_points):
+            if las_taken[x] == "Taken":
+                las_points[x] = 100000000
+        for x, point in enumerate(acc_points):
+            if acc_taken[x] == "Taken":
+                acc_points[x] = 100000000
+        
+        country_points = disec_points + las_points + acc_points
 
         #Gets the delegate's preferences
-        # com_preference = [safe_read(raw_worksheet.cell, i + 1, col).value for col in [10, 12]]
-        # del_preference = [safe_read(raw_worksheet.cell, i + 1, col).value for col in [11, 13]]
-        # print(com_preference)
-        # print(del_preference)
+        com_preference = [safe_read(raw_worksheet.cell, i + 1, col).value for col in [15, 17]]
+        del_preference = [safe_read(raw_worksheet.cell, i + 1, col).value for col in [16, 18]]
 
 
-        # #Checks to see if the delegate's points is somewhat close to the position that they prefer (changeable). If it is, then it sets them as that position, instead
-        # #of the one with the closest amount of points.
-        # a = 0
-        # ideal_coun_points = 0
-        # prefered = False
+        #Checks to see if the delegate's points is somewhat close to the position that they prefer (changeable). If it is, then it sets them as that position, instead
+        #of the one with the closest amount of points.
+        a = 0
+        ideal_coun_points = 0
+        prefered = False
 
-        # for choice in com_preference:
-        #     if prefered == True:
-        #         break
-        #     elif choice == "HCC":
-        #         prefered_cell = safe_read(las_worksheet.find, del_preference[a])
-        #         las_prefered_point = safe_read(las_worksheet.cell, prefered_cell.row, 3).value
-        #         prefered_del_points = int(las_prefered_point) * 2
-        #         if abs(int(prefered_del_points) - points) <= 3:
-        #             ideal_coun_points = prefered_del_points
-        #             prefered = True
-        #     elif choice == "DISEC":
-        #         prefered_cell = safe_read(disec_worksheet.find, del_preference[a])
-        #         prefered_del_points = safe_read(disec_worksheet.cell, prefered_cell.row, 3).value
-        #         if abs(int(prefered_del_points) - points) <= 3:
-        #             ideal_coun_points = prefered_del_points
-        #             prefered = True
-        #     a += 1
+        for choice in com_preference:
+            if prefered == True:
+                break
+            elif choice == "LAS":
+                prefered_cell = safe_read(las_worksheet.find, del_preference[a])
+                las_prefered_point = safe_read(las_worksheet.cell, prefered_cell.row, 2)
+                prefered_del_points = int(las_prefered_point.value) * 2
+                if abs(int(prefered_del_points) - points) <= 0.5:
+                    ideal_coun_points = prefered_del_points
+                    prefered = True
+            elif choice == "DISEC":
+                prefered_cell = safe_read(disec_worksheet.find, del_preference[a])
+                prefered_del_points = safe_read(disec_worksheet.cell, prefered_cell.row, 2)
+                if abs(int(prefered_del_points.value) - points) <= 0.5:
+                    ideal_coun_points = prefered_del_points.value
+                    prefered = True
+            elif choice == "ACC":
+                prefered_cell = safe_read(acc_worksheet.find, del_preference[a]).value
+                acc_prefered_point = safe_read(acc_worksheet.cell, prefered_cell.row, 2)
+                prefered_del_points = int(acc_prefered_point.value) * 3
+                if abs(int(prefered_del_points) - points) <= 0.5:
+                    ideal_coun_points = prefered_del_points
+                    prefered = True
+            a += 1
         
         if ideal_coun_points == 0:
             ideal_coun_points = country_points[min(range(len(country_points)), key = lambda i: abs(int(country_points[i]) - points))]
-
+            
+        y = 0
         #Prints to the Google Sheet that the recently assigned position is now taken.
         if ideal_coun_points in disec_points:
-            cell = safe_read(disec_worksheet.find, str(ideal_coun_points))
-            safe_update(disec_worksheet.update_cell, cell.row, 2, name)
-            safe_update(disec_worksheet.update_cell, cell.row, 4, "Taken")
-            delegation = safe_read(disec_worksheet.cell, cell.row, 1).value
+            # cell = safe_read(disec_worksheet.find, str(ideal_coun_points))
+            for val in disec_points:
+                if str(ideal_coun_points) == str(val):
+                    good_row = y + 2
+                y += 1
+            safe_update(disec_worksheet.update_cell, good_row, 3, name)
+            safe_update(disec_worksheet.update_cell, good_row, 4, "Taken")
+            delegation = safe_read(disec_worksheet.cell, good_row, 1)
+            delegation = delegation.value
         elif ideal_coun_points in las_points:
-            cell = safe_read(las_worksheet.find, str(ideal_coun_points/2))
-            safe_update(las_worksheet.update_cell, cell.row, 2, name)
-            safe_update(las_worksheet.update_cell, cell.row, 4, "Taken")
-            delegation = safe_read(las_worksheet.cell, cell.row, 1).value
-        else:
-            cell = safe_read(acc_worksheet.find, str(ideal_coun_points/2))
-            safe_update(acc_worksheet.update_cell, cell.row, 2, name)
-            safe_update(acc_worksheet.update_cell, cell.row, 4, "Taken")
-            delegation = safe_read(acc_worksheet.cell, cell.row, 1).value
+            # cell = safe_read(las_worksheet.find, str(int(ideal_coun_points/2)))
+            for val in las_points:
+                if str(ideal_coun_points) == str(val):
+                    good_row = y + 2
+                y += 1
+            safe_update(las_worksheet.update_cell, good_row, 3, name)
+            safe_update(las_worksheet.update_cell, good_row, 4, "Taken")
+            delegation = safe_read(las_worksheet.cell, good_row, 1)
+            delegation = delegation.value
+        elif ideal_coun_points in acc_points:
+            # cell = safe_read(acc_worksheet.find, str(int(ideal_coun_points/3)))
+            for val in acc_points:
+                if str(ideal_coun_points) == str(val):
+                    good_row = y + 2
+                y += 1
+            safe_update(acc_worksheet.update_cell, good_row, 3, name)
+            safe_update(acc_worksheet.update_cell, good_row, 4, "Taken")
+            delegation = safe_read(acc_worksheet.cell, good_row, 1)
+            delegation = delegation.value
         
         #Updates the final worksheet with the delegate's name and position
         safe_update(final_worksheet.update_cell, i + 1, 1, name)
         safe_update(final_worksheet.update_cell, i + 1, 2, delegation)
         
         #Updates the delegate's points by printing their points directly to the Google Sheet.
-        result = safe_update(raw_worksheet.update_cell, i + 1, 15, points)
+        result = safe_update(raw_worksheet.update_cell, i + 1, 19, points)
 
         if result is not None:
             print(f"Completed {name}'s assignment with {points} points!")
