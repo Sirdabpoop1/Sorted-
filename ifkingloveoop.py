@@ -16,7 +16,6 @@ assignments_sheet = sh.worksheet("Assignments")
 del_list = sh.worksheet("DelegationList")
 assignments_data = assignments_sheet.get_all_values()
 raw_countries = del_list.get_all_values()
-
 #General Variables
 CRISIS_CHECK = ["CC", "HOC", "UNSC", "Cabinet"]
 
@@ -75,13 +74,13 @@ class Delegates:
 class EfficiencyProMax:
     def __init__(self, assignments_data, country_data):
         self.assignments_data = assignments_data
-        self.assignments_data = country_data
+        self.country_data = country_data
         self.delegates = []
         self.delegations = []
-        self.BIG_M = 10,000
-    
+        self.oog = 0
+
     def load_data(self):
-        for i, row in enumerate(raw_countries, start = 1):
+        for row in self.country_data:
             score = int(row[3])
             country = row[2]
             committee = row[1]
@@ -90,7 +89,7 @@ class EfficiencyProMax:
             pos.set_score()
             self.delegations.append(pos)
 
-        for i,  row in enumerate(assignments_data[3:], start = 4):
+        for row in assignments_data[3:]:
             name = row[0]
             score = int(row[3])
             comm_prefs = []
@@ -104,34 +103,62 @@ class EfficiencyProMax:
                         comm_prefs.append(comm)
             dels = Delegates(name, score, comm_prefs, pos_prefs)
             self.delegates.append(dels)
-                
+
     def bob_the_building_cost_matrix(self):
+        
         num_delegates = len(self.delegates)
         num_delegations = len(self.delegations)
-        cost_matrix = np.full((num_delegates, num_delegations), 9999, dtype=float)
-        
-        for i, delegate in enumerate(self.delegates):
-            for j, delegation in enumerate(self.delegations):
+        BIG_M = 1e6
+
+        cost_matrix = np.full((num_delegates, num_delegations), BIG_M, dtype=float)
+
+        for d_idx, delegate in enumerate(self.delegates):
+            positions = delegate.pos_prefs[:6] + [""] * max(0, 6 - len(delegate.pos_prefs))
+            committees = []
+            for i in range(0, 6, 2):
+                if positions[i]:
+                    committees.append(positions[i].split("-")[0].strip())
+                else:
+                    committees.append("")
+            pref_order = positions[:2] + [committees[0]] + positions[2:4] + [committees[1]] + positions[4:6] + [committees[2]]
+
+            for g_idx, delegation in enumerate(self.delegations):
                 if delegate.score < delegation.score:
                     continue
-                    
-                try:
-                    pref_rank = delegate.comm_prefs.index(delegation.committee) + 1
-                except ValueError:
-                    pref_rank = len(delegate.comm_prefs) + 1
 
-                max_pref = len(delegate.comm_prefs)
-                if max_pref == 0:
-                    pref_score = 0
-                else:
-                    pref_score = (max_pref - (pref_rank - 1)) / max_pref
+                cost = BIG_M
+                full = f"{delegation.committee} - {delegation.country}".strip().lower()
+                committee_only = delegation.committee.strip().lower()
+                for layer, pref in enumerate(pref_order):
+                    pref_clean = pref.strip().lower()
+                    if "-" in pref_clean:  # full position
+                        if full == pref_clean:
+                            cost = layer
+                            break
 
-                score_fit = min(delegate.score / 200, 1.0) 
+                if cost == BIG_M:
+                    for layer, pref in enumerate(pref_order):
+                        pref_clean = pref.strip().lower()
+                        if "-" not in pref_clean and pref_clean:  # committee-only
+                            if committee_only == pref_clean:
+                                cost = layer + 0.5  # slightly worse than full match
+                                break
 
-                match_score = (0.9 * pref_score) + (0.1 * score_fit)
+                # Soft tie-breaker
+                if hasattr(delegate, "score") and delegate.score not in [None, "none", ""]:
+                    try:
+                        score_diff = delegate.score - delegation.score
+                        
+                        if delegation.score < 53:
+                            cost += abs(score_diff) / 100.0
+                        else:
+                            cost -= delegate.score / 10.0
+                    except ValueError:
+                        pass
 
-                cost_matrix[i, j] = 1 - match_score
-        
+
+                cost_matrix[d_idx, g_idx] = cost
+
         return cost_matrix
     
     def assign_time(self):
@@ -159,3 +186,4 @@ optimizer.load_data()
 assignments_result = optimizer.assign_time()
 optimizer.writing_to_sheet(assignments_result, start_row=4, col="T")
 print("That's all folks!")
+print(optimizer.oog)
