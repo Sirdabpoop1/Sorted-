@@ -166,7 +166,7 @@ class EfficiencyProMax:
         row_ind, col_ind = linear_sum_assignment(cost_matrix)
         assignments = []
         for r, c in zip(row_ind, col_ind):
-            if cost_matrix[r, c] < 9999:
+            if cost_matrix[r, c] < 9999 and self.delegates[r].score >= self.delegations[c].score:
                 assignments.append((self.delegates[r], self.delegations[c]))
         return assignments
     
