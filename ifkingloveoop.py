@@ -125,14 +125,15 @@ class EfficiencyProMax:
                 self.delegates.append(delegate)
 
     def bob_the_building_cost_matrix(self):
-        
         num_delegates = len(self.delegates)
         num_delegations = len(self.delegations)
         BIG_M = 1e6
+        ELIGIBLE_COST = 1000.0
 
-        cost_matrix = np.full((num_delegates, num_delegations), BIG_M, dtype=float)
+        cost_matrix = np.full((num_delegates, num_delegations), np.inf, dtype=float)
 
         for d_idx, delegate in enumerate(self.delegates):
+            # build preference layers
             positions = delegate.pos_prefs[:6] + [""] * max(0, 6 - len(delegate.pos_prefs))
             committees = []
             for i in range(0, 6, 2):
@@ -142,55 +143,124 @@ class EfficiencyProMax:
                     committees.append("")
             pref_order = positions[:2] + [committees[0]] + positions[2:4] + [committees[1]] + positions[4:6] + [committees[2]]
 
+            any_eligible = False
             for g_idx, delegation in enumerate(self.delegations):
                 if delegate.score < delegation.score:
                     continue
 
-                cost = BIG_M
+                any_eligible = True
+
+                cost = ELIGIBLE_COST
+
                 full = f"{delegation.committee} - {delegation.country}".strip().lower()
                 committee_only = delegation.committee.strip().lower()
+
+                matched = False
                 for layer, pref in enumerate(pref_order):
-                    pref_clean = pref.strip().lower()
-                    if "-" in pref_clean:  # full position
-                        if full == pref_clean:
-                            cost = layer
+                    pref_clean = str(pref).strip().lower()
+                    if "-" in pref_clean and full == pref_clean:
+                        cost = float(layer)
+                        matched = True
+                        break
+
+                if not matched:
+                    for layer, pref in enumerate(pref_order):
+                        pref_clean = str(pref).strip().lower()
+                        if "-" not in pref_clean and pref_clean and committee_only == pref_clean:
+                            cost = float(layer) + 0.5
+                            matched = True
                             break
 
-                if cost == BIG_M:
-                    for layer, pref in enumerate(pref_order):
-                        pref_clean = pref.strip().lower()
-                        if "-" not in pref_clean and pref_clean:  # committee-only
-                            if committee_only == pref_clean:
-                                cost = layer + 0.5  # slightly worse than full match
-                                break
-
-                # Soft tie-breaker
-                if hasattr(delegate, "score") and delegate.score not in [None, "none", ""]:
-                    try:
-                        score_diff = delegate.score - delegation.score
-                        
-                        if delegation.score < 53:
-                            cost += abs(score_diff) / 100.0
-                        else:
-                            cost -= delegate.score / 10.0
-                    except ValueError:
-                        pass
-
+                try:
+                    score_diff = delegate.score - delegation.score
+                    if delegation.score < 53:
+                        cost += abs(score_diff) / 100.0
+                    else:
+                        cost -= delegate.score / 10.0
+                except Exception:
+                    pass
 
                 cost_matrix[d_idx, g_idx] = cost
 
+            if not any_eligible:
+                cost_matrix[d_idx, :] = BIG_M
+
         return cost_matrix
-    
+
+
     def assign_time(self):
         cost_matrix = self.bob_the_building_cost_matrix()
-        row_ind, col_ind = linear_sum_assignment(cost_matrix)
-        assignments = []
-        for r, c in zip(row_ind, col_ind):
-            if cost_matrix[r, c] < 9999 and self.delegates[r].score >= self.delegations[c].score:
-                assignments.append((self.delegates[r], self.delegations[c]))
+        BIG_M = 1e6
+
+        # Stage 1: Mask infeasible
+        feasible_matrix = cost_matrix.copy()
+        for i, delegate in enumerate(self.delegates):
+            for j, delegation in enumerate(self.delegations):
+                if delegate.score < delegation.score:
+                    feasible_matrix[i, j] = BIG_M
         
-        all_assignments = assignments + self.all_delegates
-        return all_assignments
+        row_ind, col_ind = linear_sum_assignment(feasible_matrix)
+        
+        assignments = []
+        assigned_delegates = set()
+        assigned_delegations = set()
+
+        for r, c in zip(row_ind, col_ind):
+            if feasible_matrix[r, c] < BIG_M:
+                assignments.append((self.delegates[r], self.delegations[c]))
+                assigned_delegates.add(r)
+                assigned_delegations.add(c)
+
+        # Stage 2: Greedy Fallback
+        for i, delegate in enumerate(self.delegates):
+            if i in assigned_delegates:
+                continue
+
+            available = [j for j in range(len(self.delegations)) if j not in assigned_delegations]
+
+            if available:
+                best = min(available, key=lambda j: self.delegations[j].score)
+                assignments.append((delegate, self.delegations[best]))
+                assigned_delegations.add(best)
+            else:
+                dummy = Delegation(0, "UNASSIGNED", "", "UNASSIGNED")
+                assignments.append((delegate, dummy))
+
+        return assignments + self.all_delegates
+
+    def pinging_pinger_that_pings(self, assignments, diff_threshold = 30, ping_col = "U"):
+        ping_updates = []
+
+        for delegate, delegation in assignments:
+            if not delegation or delegation.fullset in ["UNASSIGNED", "CANCELLED"]:
+                print(f"[SKIP] {delegate.name} — unassigned or cancelled")
+                continue
+                
+            reason = None
+        
+            if delegation.score >= 53:
+                reason = "Level 3 position"
+
+            try:
+                diff = abs(delegate.score - delegation.score)
+                if diff >= diff_threshold:
+                    reason = f"Score mismatch ({delegate.score} vs {delegation.score})"
+            except Exception:
+                pass
+
+            if reason:
+                ping_updates.append((delegate.sheet_row, reason))
+            else:
+                ping_updates.append((delegate.sheet_row, ""))
+
+
+        if ping_updates:
+            ping_updates.sort(key=lambda x: x[0])
+            values = [[reason] for _, reason in ping_updates]
+            start_row = ping_updates[0][0]
+            cell_range = f"{ping_col}{start_row}:{ping_col}{start_row + len(values) - 1}"
+            safe_update(assignments_sheet.update, values, cell_range)
+            print(f"Ping column {ping_col} updated for {len(ping_updates)} delegates")
     
     def writing_to_sheet(self, assignments, start_row=4, col="T"):
         assignments_sorted = sorted(assignments, key=lambda x: x[0].sheet_row)
@@ -209,4 +279,5 @@ optimizer = EfficiencyProMax(assignments_data, raw_countries)
 optimizer.load_data()
 assignments_result = optimizer.assign_time()
 optimizer.writing_to_sheet(assignments_result, start_row=4, col="T")
+optimizer.pinging_pinger_that_pings(assignments_result)
 print("That's all folks!")
