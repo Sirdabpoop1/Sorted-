@@ -16,7 +16,7 @@ assignments_sheet = sh.worksheet("Assignments")
 del_list = sh.worksheet("DelegationList")
 assignments_data = assignments_sheet.get_all_values()
 raw_countries = del_list.get_all_values()
-#General Variables
+
 CRISIS_CHECK = ["CC", "HOC", "UNSC", "Cabinet"]
 
 #Ensures that the program continues running, even after hitting API quotas
@@ -62,11 +62,12 @@ class Delegation:
         return f"{self.country} - {self.committee} with a score of {self.score}"
     
 class Delegates:
-    def __init__(self, name, score, comm_prefs, pos_prefs):
+    def __init__(self, name, score, comm_prefs, pos_prefs, sheet_row):
         self.name = name
         self.score = score
         self.comm_prefs = comm_prefs
         self.pos_prefs = pos_prefs
+        self.sheet_row = sheet_row
     
     def __str__(self):
         return f"I am {self.name}! I have a score of {self.score}, and want {self.pos_prefs}. I prefer {self.comm_prefs}"
@@ -77,7 +78,6 @@ class EfficiencyProMax:
         self.country_data = country_data
         self.delegates = []
         self.delegations = []
-        self.oog = 0
 
     def load_data(self):
         for row in self.country_data:
@@ -89,7 +89,11 @@ class EfficiencyProMax:
             pos.set_score()
             self.delegations.append(pos)
 
-        for row in assignments_data[3:]:
+        self.all_delegates = []
+
+        for i, row in enumerate(self.assignments_data[3:], start=4):
+            assigned_pos = row[19].strip() if len(row) > 19 else ""
+
             name = row[0]
             score = int(row[3])
             comm_prefs = []
@@ -101,8 +105,24 @@ class EfficiencyProMax:
                     comm = row[col].split("-")[0].strip()
                     if comm not in comm_prefs:
                         comm_prefs.append(comm)
-            dels = Delegates(name, score, comm_prefs, pos_prefs)
-            self.delegates.append(dels)
+
+            if assigned_pos:
+                delegation_obj = None
+                assigned_pos_lower = assigned_pos.lower()
+                for d in self.delegations:
+                    if d.fullset.lower() == assigned_pos_lower:
+                        delegation_obj = d
+                        break
+                if delegation_obj is None:
+                    delegation_obj = Delegation(0, "", "", assigned_pos)
+                    delegation_obj.set_score()
+
+                delegate = Delegates(name, score, comm_prefs, pos_prefs, sheet_row=i)
+                self.all_delegates.append((delegate, delegation_obj))
+
+            else:
+                delegate = Delegates(name, score, comm_prefs, pos_prefs, sheet_row=i)
+                self.delegates.append(delegate)
 
     def bob_the_building_cost_matrix(self):
         
@@ -168,12 +188,16 @@ class EfficiencyProMax:
         for r, c in zip(row_ind, col_ind):
             if cost_matrix[r, c] < 9999 and self.delegates[r].score >= self.delegations[c].score:
                 assignments.append((self.delegates[r], self.delegations[c]))
-        return assignments
+        
+        all_assignments = assignments + self.all_delegates
+        return all_assignments
     
     def writing_to_sheet(self, assignments, start_row=4, col="T"):
-        values = [[d[1].fullset] for d in assignments]
+        assignments_sorted = sorted(assignments, key=lambda x: x[0].sheet_row)
+        values = [[assignment[1].fullset] for assignment in assignments_sorted]
+        start_row = assignments_sorted[0][0].sheet_row if assignments_sorted else 4
         cell_range = f"{col}{start_row}:{col}{start_row + len(values) - 1}"
-        safe_update(assignments_sheet.update, cell_range, values)
+        safe_update(assignments_sheet.update, values, cell_range)
         print(f"Assignments written to column {col} starting at row {start_row}")
 
     def debug_print(self):
@@ -186,4 +210,3 @@ optimizer.load_data()
 assignments_result = optimizer.assign_time()
 optimizer.writing_to_sheet(assignments_result, start_row=4, col="T")
 print("That's all folks!")
-print(optimizer.oog)
