@@ -1,4 +1,4 @@
-#Libraries
+# Libraries
 import gspread
 import time
 import numpy as np
@@ -6,11 +6,11 @@ from collections import defaultdict
 from scipy.optimize import linear_sum_assignment
 from google.oauth2.service_account import Credentials
 
-#Permissions + Sheets Setup
+# Permissions + Sheets Setup
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
 client = gspread.authorize(creds)
-sheet_id = "1Q0rmXKE6p9C0TZgQfaGgVrXiKFZtVO56mZtNvCn0oYc"
+sheet_id = "13pB32e0QvE0QlGSnjtIDD6hF04N715RV0l_rvM1PnlY"
 sh = client.open_by_key(sheet_id)
 assignments_sheet = sh.worksheet("Assignments")
 del_list = sh.worksheet("DelegationList")
@@ -19,8 +19,7 @@ raw_countries = del_list.get_all_values()
 
 CRISIS_CHECK = ["CC", "HOC", "UNSC", "Cabinet"]
 
-#Ensures that the program continues running, even after hitting API quotas
-
+# Ensures that the program continues running, even after hitting API quotas
 def safe_update(func, *args, **kwargs):
     max_retries = 5
     retries = 0
@@ -40,8 +39,7 @@ def safe_update(func, *args, **kwargs):
     print("Quota still exceeded after multiple retries when updating")
     return None
 
-#Classes
-
+# Classes
 class Delegation:
     def __init__(self, score, country, committee, fullset):
         self.score = score
@@ -49,6 +47,7 @@ class Delegation:
         self.country = country
         self.committee = committee
         self.fullset = fullset
+        
     def set_score(self):
         if self.score == 1:
             self.score = 0
@@ -82,80 +81,115 @@ class EfficiencyProMax:
         self.country_data = country_data
         self.delegates = []
         self.delegations = []
-
-    def load_data(self):
-        for row in self.country_data:
-            score = int(row[3])
-            country = row[2]
-            committee = row[1]
-            fullset = row[4]
-            pos = Delegation(score, country, committee, fullset)
-            pos.set_score()
-            self.delegations.append(pos)
-
         self.all_delegates = []
 
+    def load_previous_assignments(self):
+        self.all_delegates = []
+        assigned_delegation_names = set()
+
         for i, row in enumerate(self.assignments_data[3:], start=4):
+            name = row[0].strip()
             assigned_pos = row[19].strip() if len(row) > 19 else ""
 
-            name = row[0]
-            score = int(row[3])
+            if not name:
+                continue
+
+            # Find delegate object in sheet
+            delegate_obj = next((d for d in self.all_delegates_from_sheet if d.name.lower() == name.lower() and d.sheet_row == i), None)
+            if not delegate_obj:
+                continue
+
+            if assigned_pos and assigned_pos.upper() != "UNASSIGNED":
+                # Treat whatever is in the sheet as fixed assignment
+                delegation_obj = Delegation(0, "", "", assigned_pos)
+                self.all_delegates.append((delegate_obj, delegation_obj))
+                assigned_delegation_names.add(assigned_pos.lower())
+
+        # Build list of delegations still available for assignment
+        self.available_delegations = [
+            d for d in self.delegations
+            if d.fullset.lower() not in assigned_delegation_names
+        ]
+        print(f"DEBUG: {len(self.available_delegations)} delegations available after fixed assignments.")
+
+
+
+
+
+    def load_data(self):
+        # Load all delegations first
+        self.delegations = []
+        for row in self.country_data:
+            if len(row) < 5:
+                continue
+            try:
+                score = int(row[3]) if row[3].strip() else 0
+                country = row[2].strip()
+                committee = row[1].strip()
+                fullset = row[4].strip()
+                pos = Delegation(score, country, committee, fullset)
+                pos.set_score()
+                self.delegations.append(pos)
+            except (ValueError, IndexError) as e:
+                print(f"Warning: Skipping invalid delegation row: {row} - {e}")
+
+        # Load ALL delegates (both assigned and unassigned)
+        self.all_delegates_from_sheet = []  # Store all delegates for reference
+        self.delegates = []  # Only unassigned delegates for new assignment
+        
+        for i, row in enumerate(self.assignments_data[3:], start=4):
+            if len(row) < 20:
+                continue
+                
+            name = row[0].strip()
+            if not name:
+                continue
+            
+            assigned_pos = row[19].strip() if len(row) > 19 else ""
+            score = int(row[3]) if row[3].strip().isdigit() else 0
+            
             comm_prefs = []
             pos_prefs = []
             for col in range(5, 17, 2):
-                cell = str(row[col]).strip()
-                if cell:
-                    pos_prefs.append(row[col])
-                    comm = row[col].split("-")[0].strip()
-                    if comm not in comm_prefs:
-                        comm_prefs.append(comm)
+                if col < len(row):
+                    cell = str(row[col]).strip()
+                    if cell:
+                        pos_prefs.append(cell)
+                        comm = cell.split("-")[0].strip()
+                        if comm not in comm_prefs:
+                            comm_prefs.append(comm)
 
-            if assigned_pos:
-                delegation_obj = None
-                assigned_pos_lower = assigned_pos.lower()
-                for d in self.delegations:
-                    if d.fullset.lower() == assigned_pos_lower:
-                        delegation_obj = d
-                        break
-                if delegation_obj is None:
-                    delegation_obj = Delegation(0, "", "", assigned_pos)
-                    delegation_obj.set_score()
-
-                delegate = Delegates(name, score, comm_prefs, pos_prefs, sheet_row=i)
-                self.all_delegates.append((delegate, delegation_obj))
-
-            else:
-                delegate = Delegates(name, score, comm_prefs, pos_prefs, sheet_row=i)
+            delegate = Delegates(name, score, comm_prefs, pos_prefs, sheet_row=i)
+            self.all_delegates_from_sheet.append(delegate)
+            
+            # Only add to delegates list if not assigned
+            if not assigned_pos or assigned_pos == "UNASSIGNED":
                 self.delegates.append(delegate)
 
-    def bob_the_building_cost_matrix(self):
-        num_delegates = len(self.delegates)
-        num_delegations = len(self.delegations)
+    def bob_the_building_cost_matrix(self, delegates=None, delegations=None):
+        if delegates is None:
+            delegates = self.delegates
+        if delegations is None:
+            delegations = self.delegations
+
+        num_delegates = len(delegates)
+        num_delegations = len(delegations)
         BIG_M = 1e6
         ELIGIBLE_COST = 1000.0
 
         cost_matrix = np.full((num_delegates, num_delegations), np.inf, dtype=float)
 
-        for d_idx, delegate in enumerate(self.delegates):
-            # build preference layers
+        for d_idx, delegate in enumerate(delegates):
             positions = delegate.pos_prefs[:6] + [""] * max(0, 6 - len(delegate.pos_prefs))
-            committees = []
-            for i in range(0, 6, 2):
-                if positions[i]:
-                    committees.append(positions[i].split("-")[0].strip())
-                else:
-                    committees.append("")
+            committees = [positions[i].split("-")[0].strip() if positions[i] else "" for i in range(0,6,2)]
             pref_order = positions[:2] + [committees[0]] + positions[2:4] + [committees[1]] + positions[4:6] + [committees[2]]
 
-            any_eligible = False
-            for g_idx, delegation in enumerate(self.delegations):
+            for g_idx, delegation in enumerate(delegations):
                 if delegate.score < delegation.score:
+                    cost_matrix[d_idx, g_idx] = BIG_M
                     continue
 
-                any_eligible = True
-
                 cost = ELIGIBLE_COST
-
                 full = f"{delegation.committee} - {delegation.country}".strip().lower()
                 committee_only = delegation.committee.strip().lower()
 
@@ -175,77 +209,118 @@ class EfficiencyProMax:
                             matched = True
                             break
 
-                try:
-                    score_diff = delegate.score - delegation.score
-                    if delegation.score < 53:
-                        cost += abs(score_diff) / 100.0
-                    else:
-                        cost -= delegate.score / 10.0
-                except Exception:
-                    pass
+                score_diff = delegate.score - delegation.score
+                if delegation.score < 53:
+                    cost += abs(score_diff)/100.0
+                else:
+                    cost -= delegate.score / 10.0
 
                 cost_matrix[d_idx, g_idx] = cost
 
-            if not any_eligible:
-                cost_matrix[d_idx, :] = BIG_M
-
         return cost_matrix
 
-
     def assign_time(self):
-        cost_matrix = self.bob_the_building_cost_matrix()
-        BIG_M = 1e6
+        print("="*60)
+        print("ASSIGNMENT PROCESS STARTED")
+        print(f"Delegates to assign: {len(self.delegates)}")
+        print(f"Fixed assignments: {len(self.all_delegates)}")
 
-        # Stage 1: Mask infeasible
-        feasible_matrix = cost_matrix.copy()
-        for i, delegate in enumerate(self.delegates):
-            for j, delegation in enumerate(self.delegations):
-                if delegate.score < delegation.score:
-                    feasible_matrix[i, j] = BIG_M
-        
-        row_ind, col_ind = linear_sum_assignment(feasible_matrix)
-        
-        assignments = []
-        assigned_delegates = set()
-        assigned_delegations = set()
+        if not self.delegates:
+            print("No new delegates to assign")
+            return self.all_delegates
+
+        # Build cost matrix for unassigned delegates
+        cost_matrix = self.bob_the_building_cost_matrix(self.delegates, self.available_delegations)
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+
+        new_assignments = []
 
         for r, c in zip(row_ind, col_ind):
-            if feasible_matrix[r, c] < BIG_M:
-                assignments.append((self.delegates[r], self.delegations[c]))
-                assigned_delegates.add(r)
-                assigned_delegations.add(c)
-
-        # Stage 2: Greedy Fallback
-        for i, delegate in enumerate(self.delegates):
-            if i in assigned_delegates:
+            if cost_matrix[r, c] >= 1e6:
+                # Skip incompatible matches
                 continue
 
-            available = [j for j in range(len(self.delegations)) if j not in assigned_delegations]
+            delegate_obj = self.delegates[r]
+            delegation_obj = self.available_delegations[c]
 
-            if available:
-                best = min(available, key=lambda j: self.delegations[j].score)
-                assignments.append((delegate, self.delegations[best]))
-                assigned_delegations.add(best)
+            # Ensure every delegation has a valid fullset
+            if not getattr(delegation_obj, "fullset", "").strip():
+                delegation_obj.fullset = f"UNASSIGNED PLACEHOLDER {delegation_obj.committee} - {delegation_obj.country}"
+
+            new_assignments.append((delegate_obj, delegation_obj))
+            print(f"DEBUG: Assigned {delegate_obj.name} -> {delegation_obj.fullset}")
+
+        # Handle any remaining unassigned delegates (greedy fallback)
+        assigned_indices = set(row_ind)
+        for i, delegate_obj in enumerate(self.delegates):
+            if i in assigned_indices:
+                continue
+            if self.available_delegations:
+                # Pick the first remaining delegation
+                delegation_obj = self.available_delegations.pop(0)
+                if not getattr(delegation_obj, "fullset", "").strip():
+                    delegation_obj.fullset = f"UNASSIGNED PLACEHOLDER {delegation_obj.committee} - {delegation_obj.country}"
+                new_assignments.append((delegate_obj, delegation_obj))
+                print(f"DEBUG: Fallback assignment: {delegate_obj.name} -> {delegation_obj.fullset}")
             else:
-                dummy = Delegation(0, "UNASSIGNED", "", "UNASSIGNED")
-                assignments.append((delegate, dummy))
+                new_assignments.append((delegate_obj, "UNASSIGNED"))
+                print(f"DEBUG: No positions left: {delegate_obj.name} -> UNASSIGNED")
 
-        return assignments + self.all_delegates
+        # Combine with existing fixed assignments
+        all_assignments = self.all_delegates + new_assignments
+        print(f"DEBUG: Total assignments: {len(all_assignments)}")
+        return all_assignments
+
+
+
+    def writing_to_sheet(self, assignments, col="T"):
+        updates = []
+
+        for delegate, delegation in assignments:
+            # Skip blank delegate names
+            if not delegate.name.strip():
+                continue
+
+            # Decide value to write
+            if isinstance(delegation, str):
+                value_to_write = delegation
+            else:
+                value_to_write = delegation.fullset.strip() if delegation.fullset.strip() else "UNASSIGNED"
+            
+            updates.append({
+                "range": f"{col}{delegate.sheet_row}",
+                "values": [[value_to_write]]
+            })
+
+        if updates:
+            try:
+                safe_update(assignments_sheet.batch_update, updates)
+                print(f"Wrote {len(updates)} new assignments to column {col}.")
+            except Exception as e:
+                print("❌ Failed to write assignments:", e)
+        else:
+            print("No new assignments to write.")
 
     def pinging_pinger_that_pings(self, assignments_result, ping_col="U"):
         assignments_sheet = sh.worksheet("Assignments")
         ping_updates = []
 
         for delegate, delegation in assignments_result:
+            if (delegate, delegation) in self.all_delegates:
+                continue
+
+            if not delegate.name.strip():
+                continue
+
             if delegation in ("UNASSIGNED", "CANCELLED"):
                 continue
 
             reason = None
 
-            if delegation.level == 3:
+            if hasattr(delegation, 'level') and delegation.level == 3:
                 reason = "Ping (Level 3 position)"
 
-            elif abs(delegate.score - delegation.score) > 15:
+            elif hasattr(delegation, 'score') and abs(delegate.score - delegation.score) > 30:
                 reason = f"Ping (Score mismatch: {delegate.score} vs {delegation.score})"
 
             if reason:
@@ -254,38 +329,22 @@ class EfficiencyProMax:
                     "values": [[reason]]
                 })
                 print(f"DEBUG: Pinging {delegate.name} ({delegate.score}) "
-                    f"-> {delegation.fullset} ({delegation.score}) "
+                    f"-> {delegation.fullset if hasattr(delegation, 'fullset') else delegation} ({delegation.score if hasattr(delegation, 'score') else 'N/A'}) "
                     f"Reason: {reason}")
 
-        requests = []
-        for row, reason in ping_updates:
-            requests.append({
-                "range": f"{ping_col}{row}",
-                "values": [[reason]]
-            })
-        try:
-            safe_update(assignments_sheet.batch_update, requests)
-            print(f"Ping column {ping_col} updated for {len(requests)} rows.")
-        except Exception as e:
-            print("Failed to write pings:", e)
+        if ping_updates:
+            try:
+                safe_update(assignments_sheet.batch_update, [{"range": u["range"], "values": u["values"]} for u in ping_updates])
+                print(f"Ping column {ping_col} updated for {len(ping_updates)} rows.")
+            except Exception as e:
+                print("Failed to write pings:", e)
 
-
-    def writing_to_sheet(self, assignments, start_row=4, col="T"):
-        assignments_sorted = sorted(assignments, key=lambda x: x[0].sheet_row)
-        values = [[assignment[1].fullset] for assignment in assignments_sorted]
-        start_row = assignments_sorted[0][0].sheet_row if assignments_sorted else 4
-        cell_range = f"{col}{start_row}:{col}{start_row + len(values) - 1}"
-        safe_update(assignments_sheet.update, values, cell_range)
-        print(f"Assignments written to column {col} starting at row {start_row}")
-
-    def debug_print(self):
-        print("\n=== Delegates ===")
-        for d in self.delegates:
-            print(d)
-
+# Main execution
 optimizer = EfficiencyProMax(assignments_data, raw_countries)
-optimizer.load_data()
-assignments_result = optimizer.assign_time()
-optimizer.writing_to_sheet(assignments_result, start_row=4, col="T")
-optimizer.pinging_pinger_that_pings(assignments_result)
+optimizer.load_data()                      # Loads all delegates and delegations
+optimizer.load_previous_assignments()      # Sets fixed assignments & self.available_delegations
+assignments_result = optimizer.assign_time()  # Perform assignment
+optimizer.writing_to_sheet(assignments_result, col="T")  # Write to sheet
+optimizer.pinging_pinger_that_pings(assignments_result, ping_col="U")  # Update ping column
+
 print("That's all folks!")
