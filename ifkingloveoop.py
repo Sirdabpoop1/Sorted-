@@ -45,16 +45,20 @@ def safe_update(func, *args, **kwargs):
 class Delegation:
     def __init__(self, score, country, committee, fullset):
         self.score = score
+        self.level = None
         self.country = country
         self.committee = committee
         self.fullset = fullset
     def set_score(self):
         if self.score == 1:
             self.score = 0
+            self.level = 1
         elif self.score == 2:
             self.score = 20
+            self.level = 2
         else:
             self.score = 53
+            self.level = 3
         if any(word in self.committee for word in CRISIS_CHECK):
             self.score += 15
 
@@ -228,40 +232,44 @@ class EfficiencyProMax:
 
         return assignments + self.all_delegates
 
-    def pinging_pinger_that_pings(self, assignments, diff_threshold = 30, ping_col = "U"):
+    def pinging_pinger_that_pings(self, assignments_result, ping_col="U"):
+        assignments_sheet = sh.worksheet("Assignments")
         ping_updates = []
 
-        for delegate, delegation in assignments:
-            if not delegation or delegation.fullset in ["UNASSIGNED", "CANCELLED"]:
-                print(f"[SKIP] {delegate.name} — unassigned or cancelled")
+        for delegate, delegation in assignments_result:
+            if delegation in ("UNASSIGNED", "CANCELLED"):
                 continue
-                
-            reason = None
-        
-            if delegation.score >= 53:
-                reason = "Level 3 position"
 
-            try:
-                diff = abs(delegate.score - delegation.score)
-                if diff >= diff_threshold:
-                    reason = f"Score mismatch ({delegate.score} vs {delegation.score})"
-            except Exception:
-                pass
+            reason = None
+
+            if delegation.level == 3:
+                reason = "Ping (Level 3 position)"
+
+            elif abs(delegate.score - delegation.score) > 15:
+                reason = f"Ping (Score mismatch: {delegate.score} vs {delegation.score})"
 
             if reason:
-                ping_updates.append((delegate.sheet_row, reason))
-            else:
-                ping_updates.append((delegate.sheet_row, ""))
+                ping_updates.append({
+                    "range": f"{ping_col}{delegate.sheet_row}",
+                    "values": [[reason]]
+                })
+                print(f"DEBUG: Pinging {delegate.name} ({delegate.score}) "
+                    f"-> {delegation.fullset} ({delegation.score}) "
+                    f"Reason: {reason}")
+
+        requests = []
+        for row, reason in ping_updates:
+            requests.append({
+                "range": f"{ping_col}{row}",
+                "values": [[reason]]
+            })
+        try:
+            safe_update(assignments_sheet.batch_update, requests)
+            print(f"Ping column {ping_col} updated for {len(requests)} rows.")
+        except Exception as e:
+            print("Failed to write pings:", e)
 
 
-        if ping_updates:
-            ping_updates.sort(key=lambda x: x[0])
-            values = [[reason] for _, reason in ping_updates]
-            start_row = ping_updates[0][0]
-            cell_range = f"{ping_col}{start_row}:{ping_col}{start_row + len(values) - 1}"
-            safe_update(assignments_sheet.update, values, cell_range)
-            print(f"Ping column {ping_col} updated for {len(ping_updates)} delegates")
-    
     def writing_to_sheet(self, assignments, start_row=4, col="T"):
         assignments_sorted = sorted(assignments, key=lambda x: x[0].sheet_row)
         values = [[assignment[1].fullset] for assignment in assignments_sorted]
