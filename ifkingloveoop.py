@@ -13,7 +13,7 @@ client = gspread.authorize(creds)
 sheet_id = "13pB32e0QvE0QlGSnjtIDD6hF04N715RV0l_rvM1PnlY"
 sh = client.open_by_key(sheet_id)
 assignments_sheet = sh.worksheet("Assignments")
-del_list = sh.worksheet("DelegationList")
+del_list = sh.worksheet("MasterDelList")
 assignments_data = assignments_sheet.get_all_values()
 raw_countries = del_list.get_all_values()
 
@@ -111,10 +111,6 @@ class EfficiencyProMax:
             if d.fullset.lower() not in assigned_delegation_names
         ]
         print(f"DEBUG: {len(self.available_delegations)} delegations available after fixed assignments.")
-
-
-
-
 
     def load_data(self):
         # Load all delegations first
@@ -224,6 +220,7 @@ class EfficiencyProMax:
         print("ASSIGNMENT PROCESS STARTED")
         print(f"Delegates to assign: {len(self.delegates)}")
         print(f"Fixed assignments: {len(self.all_delegates)}")
+        print(f"Available delegations: {len(self.available_delegations)}")
 
         if not self.delegates:
             print("No new delegates to assign")
@@ -234,35 +231,46 @@ class EfficiencyProMax:
         row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
         new_assignments = []
+        used_delegation_indices = set()
 
+        # Process optimal assignments
         for r, c in zip(row_ind, col_ind):
             if cost_matrix[r, c] >= 1e6:
-                # Skip incompatible matches
                 continue
 
             delegate_obj = self.delegates[r]
             delegation_obj = self.available_delegations[c]
+            used_delegation_indices.add(c)
 
             # Ensure every delegation has a valid fullset
             if not getattr(delegation_obj, "fullset", "").strip():
-                delegation_obj.fullset = f"UNASSIGNED PLACEHOLDER {delegation_obj.committee} - {delegation_obj.country}"
+                delegation_obj.fullset = f"{delegation_obj.committee} - {delegation_obj.country}"
 
             new_assignments.append((delegate_obj, delegation_obj))
             print(f"DEBUG: Assigned {delegate_obj.name} -> {delegation_obj.fullset}")
 
-        # Handle any remaining unassigned delegates (greedy fallback)
-        assigned_indices = set(row_ind)
+        # Handle any remaining unassigned delegates
+        assigned_delegate_indices = set(row_ind)
         for i, delegate_obj in enumerate(self.delegates):
-            if i in assigned_indices:
+            if i in assigned_delegate_indices:
                 continue
-            if self.available_delegations:
-                # Pick the first remaining delegation
-                delegation_obj = self.available_delegations.pop(0)
-                if not getattr(delegation_obj, "fullset", "").strip():
-                    delegation_obj.fullset = f"UNASSIGNED PLACEHOLDER {delegation_obj.committee} - {delegation_obj.country}"
-                new_assignments.append((delegate_obj, delegation_obj))
-                print(f"DEBUG: Fallback assignment: {delegate_obj.name} -> {delegation_obj.fullset}")
+                
+            # Find next available delegation that wasn't used in optimal assignment
+            available_delegation = None
+            for j, delegation_obj in enumerate(self.available_delegations):
+                if j not in used_delegation_indices:
+                    available_delegation = delegation_obj
+                    used_delegation_indices.add(j)
+                    break
+                    
+            if available_delegation:
+                # Ensure valid fullset
+                if not getattr(available_delegation, "fullset", "").strip():
+                    available_delegation.fullset = f"{available_delegation.committee} - {available_delegation.country}"
+                new_assignments.append((delegate_obj, available_delegation))
+                print(f"DEBUG: Fallback assignment: {delegate_obj.name} -> {available_delegation.fullset}")
             else:
+                # NO POSITIONS LEFT - assign UNASSIGNED
                 new_assignments.append((delegate_obj, "UNASSIGNED"))
                 print(f"DEBUG: No positions left: {delegate_obj.name} -> UNASSIGNED")
 
@@ -341,10 +349,11 @@ class EfficiencyProMax:
 
 # Main execution
 optimizer = EfficiencyProMax(assignments_data, raw_countries)
-optimizer.load_data()                      # Loads all delegates and delegations
-optimizer.load_previous_assignments()      # Sets fixed assignments & self.available_delegations
-assignments_result = optimizer.assign_time()  # Perform assignment
-optimizer.writing_to_sheet(assignments_result, col="T")  # Write to sheet
-optimizer.pinging_pinger_that_pings(assignments_result, ping_col="U")  # Update ping column
+optimizer.load_data()
+optimizer.load_previous_assignments()
+assignments_result = optimizer.assign_time()
+optimizer.writing_to_sheet(assignments_result, col="T")
+optimizer.pinging_pinger_that_pings(assignments_result, ping_col="U")
+
 
 print("That's all folks!")
