@@ -42,3 +42,5 @@ venv.bak/
 # Installer logs
 pip-log.txt
 pip-delete-this-
+
+credentials.json
